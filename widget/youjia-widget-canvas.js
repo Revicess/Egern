@@ -176,14 +176,14 @@ export default async function(ctx) {
   const mx = chartBlockX, my = chartBlockY, mw = chartBlockW, mh = 83;
   const hlen = hist.length;
   if (hlen >= 2) {
-    const start = Math.max(0, hlen - 3);
+    const start = Math.max(0, hlen - 11);
     const subset = hist.slice(start);
     const n = subset.length;
     if (n < 2) return;  /* 数据不足 */
     const maxP = Math.max(...subset.map(h => h.p));
-    const yHi = Math.max(10, Math.ceil((maxP * 1.08) / 2) * 2);
-    const ticks = [0, yHi / 2, yHi];
-    const formatTick = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+    const yHi = Math.floor(maxP) + 1;
+    const ticks = [0, Math.round(yHi / 2), yHi];
+    const formatTick = v => String(v);
     const dateX = [mx + 14, mx + 14 + (mw - 28) / 2, mx + mw - 14];
     const tx = i => mx + (i / (n - 1)) * mw;
     const ty = p => my + mh - (p / yHi) * mh;
@@ -197,10 +197,12 @@ export default async function(ctx) {
       cx.fillStyle = '#c9d1d9'; cx.fillText(formatTick(v), mx - 7, py);
     }
 
-    /* 横坐标日期 */
+    /* 横坐标日期：曲线绘制 11 个点，但只显示首/中/尾 3 个日期 */
     cx.textAlign = 'center'; cx.textBaseline = 'top'; cx.font = '400 8px ' + MONO; cx.fillStyle = '#c9d1d9';
-    for (let i = 0; i < n; i++) {
-      cx.fillText(subset[i].d.slice(5), dateX[i], my + mh + 6);
+    const dateIdx = n >= 3 ? [0, Math.floor((n - 1) / 2), n - 1] : [0, n - 1];
+    const dateLabelX = n >= 3 ? dateX : [dateX[0], dateX[2]];
+    for (let i = 0; i < dateIdx.length; i++) {
+      cx.fillText(subset[dateIdx[i]].d.slice(5), dateLabelX[i], my + mh + 6);
     }
 
     /* 填充 */
@@ -252,7 +254,7 @@ export default async function(ctx) {
   const dataUri = 'data:image/png;base64,' + btoa(binary);
 
   /* ═══ 返回小组件 ═══ */
-  const refreshAfter = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const refreshAfter = getRefreshAfter(nextDateStr);
   return {
     type: 'widget',
     refreshAfter: refreshAfter,
@@ -260,6 +262,36 @@ export default async function(ctx) {
     padding: 0,
     children: [],
   };
+
+  /* ═══════════════════════════════════════════
+     刷新时间辅助函数
+     ═══════════════════════════════════════════ */
+
+  function getRefreshAfter(nextDate) {
+    const now = new Date();
+    const today = localDateString(now);
+
+    if (!nextDate || nextDate === '—') {
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    }
+
+    if (today < nextDate) {
+      return new Date(nextDate + 'T08:30:00').toISOString();
+    }
+
+    if (today === nextDate) {
+      return new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+    }
+
+    return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  }
+
+  function localDateString(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
 
   /* ═══════════════════════════════════════════
      绘图辅助函数
